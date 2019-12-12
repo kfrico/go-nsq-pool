@@ -10,7 +10,7 @@ import (
 // NsqProducer interface
 type NsqProducer interface {
 	Ping() error
-	SetLogger(l logger, lvl nsq.LogLevel)
+	SetLogger(l logger, lvl LogLevel)
 	String() string
 	Stop()
 	PublishAsync(topic string, body []byte, doneChan chan *nsq.ProducerTransaction, args ...interface{}) error
@@ -87,9 +87,9 @@ func (pp *Producer) Ping() error {
 }
 
 // SetLogger assigns the logger to use as well as a level
-func (pp *Producer) SetLogger(l logger, lvl nsq.LogLevel) {
+func (pp *Producer) SetLogger(l logger, lvl LogLevel) {
 	_ = pp.Each(func(p *nsq.Producer) error {
-		p.SetLogger(l, lvl)
+		p.SetLogger(l, nsq.LogLevel(lvl))
 
 		return nil
 	})
