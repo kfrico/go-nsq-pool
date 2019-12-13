@@ -1,7 +1,6 @@
 package nsqpool
 
 import (
-	"sync"
 	"time"
 
 	"github.com/nsqio/go-nsq"
@@ -35,22 +34,41 @@ func NewProducer(addr string, config *nsq.Config, num int) (NsqProducer, error) 
 		}
 	}
 
-	return &Producer{
-		pool:   p,
-		num:    num,
-		addr:   addr,
-		config: *config,
-	}, nil
+	pp := &Producer{
+		pool:     p,
+		num:      num,
+		addr:     addr,
+		config:   *config,
+		worker:   make(chan *nsq.Producer, num),
+		stopChan: make(chan struct{}),
+	}
+
+	go pp.work()
+
+	return pp, nil
 }
 
 // Producer type
 type Producer struct {
-	pool   map[int]*nsq.Producer
-	num    int
-	addr   string
-	config nsq.Config
-	next   int
-	mux    sync.Mutex
+	pool     map[int]*nsq.Producer
+	num      int
+	addr     string
+	config   nsq.Config
+	next     int
+	worker   chan *nsq.Producer
+	stopChan chan struct{}
+}
+
+// work job work
+func (pp *Producer) work() {
+	for {
+		pp.next = (pp.next + 1) % pp.num
+		select {
+		case pp.worker <- pp.pool[pp.next]:
+		case <-pp.stopChan:
+			return
+		}
+	}
 }
 
 // Each each pool producer
@@ -68,12 +86,7 @@ func (pp *Producer) Each(callback func(*nsq.Producer) error) error {
 
 // Next get next producer
 func (pp *Producer) Next() *nsq.Producer {
-	pp.mux.Lock()
-	defer pp.mux.Unlock()
-
-	pp.next = (pp.next + 1) % pp.num
-
-	return pp.pool[pp.next]
+	return <-pp.worker
 }
 
 // Ping causes the Producer to connect to it's configured nsqd (if not already
@@ -107,6 +120,8 @@ func (pp *Producer) Stop() {
 
 		return nil
 	})
+
+	pp.stopChan <- struct{}{}
 }
 
 // PublishAsync publishes a message body to the specified topic
